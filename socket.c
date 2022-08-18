@@ -24,7 +24,7 @@
 #include <net/if.h>
 
 #define handle_error(msg) { fprintf(stderr, "%s %s(%d)\n", msg, strerror(errno), errno); exit(1); }
-const char* pathname = "/tmp/container1/uds";
+const char* pathname = "/tmp/uds";
 #define QUEUE 0
 #define XSK_PATH "/sys/fs/bpf/xdp/globals/xsk_map"
 #define OLD_KERNEL 1

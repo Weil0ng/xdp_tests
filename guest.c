@@ -33,7 +33,7 @@ struct xsk_socket {
 };
 
 #define handle_error(msg) { fprintf(stderr, "%s %s(%d)\n", msg, strerror(errno), errno); exit(1); }
-const char* pathname = "/shared/uds";
+const char* pathname = "/tmp/uds";
 
 #define DEBUG 0
 #define RING_SIZE 2048
@@ -62,7 +62,7 @@ static void *stats_poll(void *arg)
         double period = 0.0, rx_pps = 0.0;
         while (1) {
                 sleep(interval);
-                if (prev_time == 0 || prev_rx_packets == 0) {
+                if (prev_time == 0) {
                           prev_time = gettime();
                           prev_rx_packets = xsk->rx_packets;
                           continue;
@@ -71,7 +71,9 @@ static void *stats_poll(void *arg)
                 cur_rx_packets = xsk->rx_packets;
                 period = ((double) (cur_time - prev_time) / NANOSEC_PER_SEC);
                 rx_pps = (cur_rx_packets - prev_rx_packets) / period;
-                printf("rx pps: %'10.0f", rx_pps);
+                printf("rx pps: %'10.0f\n", rx_pps);
+		prev_time = cur_time;
+		prev_rx_packets = cur_rx_packets;
         }
 }
 
@@ -269,6 +271,13 @@ void send_msg(int uds, int ifindex)
 
 void dumb_poll(struct xsk_socket *xsk, void* umem, struct umem_ring *fill, struct kernel_ring *rx)
 {
+	int recv_packets, num_reserved, i;
+	struct xdp_desc* desc;
+	char *pkt, *s;
+	struct ethhdr *eth;
+	struct iphdr *ipv4;
+	struct in_addr ip;
+
 	while(1)
 	{
 		if(DEBUG)
@@ -276,18 +285,18 @@ void dumb_poll(struct xsk_socket *xsk, void* umem, struct umem_ring *fill, struc
 			sleep(1);
 		}
 		//printf("debugging consumer for fill: %d\n", debug_umem_cons(fill));
-		int recv_packets = xsk_kr_cons_peek(rx, RING_SIZE/3);
+		recv_packets = xsk_kr_cons_peek(rx, RING_SIZE/3);
 		if(recv_packets)
 		{
-			int num_reserved = xsk_umem_prod_reserve(fill, recv_packets);
+			num_reserved = xsk_umem_prod_reserve(fill, recv_packets);
 			if(DEBUG) {
 				printf("Recieved %d packets\n", recv_packets);
 				printf("Reserved %d slots in the umem\n", num_reserved);
 			}
-			for (int i=0; i<recv_packets; i++)
+			for (i=0; i<recv_packets; i++)
 			{
 				++xsk->rx_packets;
-				struct xdp_desc* desc = xsk_kr_cons_read(rx);
+				desc = xsk_kr_cons_read(rx);
 				if(DEBUG) {
 					printf("got packet with addr %p, len %d\n",(void*) desc->addr, desc->len);
 				}
@@ -297,12 +306,12 @@ void dumb_poll(struct xsk_socket *xsk, void* umem, struct umem_ring *fill, struc
 				if(DEBUG) {
 					printf("extracted addr: %p, packet offset = %p\n", addr & XSK_UNALIGNED_BUF_ADDR_MASK, (addr & XSK_UNALIGNED_BUF_ADDR_MASK) + (addr >> XSK_UNALIGNED_BUF_OFFSET_SHIFT));
 				}
-				char* pkt = (char*)umem + (addr & XSK_UNALIGNED_BUF_ADDR_MASK);
+				pkt = (char*)umem + (addr & XSK_UNALIGNED_BUF_ADDR_MASK);
 
 				if(DEBUG) {
 					printf("looking for packet at %p\n", pkt);
 				}
-				struct ethhdr *eth = (struct ethhdr *)pkt;
+				eth = (struct ethhdr *)pkt;
 				if (ntohs(eth->h_proto) != ETH_P_IP) {
 					xsk_umem_prod_write(fill, original);
 					if(DEBUG) {
@@ -310,10 +319,9 @@ void dumb_poll(struct xsk_socket *xsk, void* umem, struct umem_ring *fill, struc
 					}
 					continue;
 				}
-				struct iphdr *ipv4 = (struct iphdr *)(eth + 1);
-				struct in_addr ip;
+				ipv4 = (struct iphdr *)(eth + 1);
 				memcpy(&ip, &ipv4->saddr, sizeof(ip));
-				char *s = inet_ntoa(ip);
+				s = inet_ntoa(ip);
 				if(DEBUG) {
 					printf("Got IP: %s\n", s);
 				}
@@ -348,11 +356,11 @@ int main()
         xsk_sock.fd = xsk;
         int ret;
         pthread_t stats_poll_thread;
+	printf("creating stats thread\n");
         ret = pthread_create(&stats_poll_thread, NULL, stats_poll, &xsk_sock);
         if (ret) {
               handle_error("error creating stats thraed");
         }
 	dumb_poll(&xsk_sock, umem, &fill, &rx);
-	sleep(500);
-
+	while (1) {}
 }
