@@ -32,7 +32,28 @@ SEC("xdp")
 int xdp_redirect(struct xdp_md *ctx)
 {
 	int idx = 0;
+	void* data = (void*)(long)ctx->data;
+	void* data_end = (void*)(long)ctx->data_end;
+	struct ethhdr *eth = data;
 
+	if(ctx->data + sizeof(struct ethhdr) > ctx->data_end)
+		return XDP_DROP;
+	__u16 h_proto = eth->h_proto;
+	if (h_proto != htons(ETH_P_IP))
+		return XDP_PASS;
+
+	struct iphdr *iph = data + sizeof(struct ethhdr);
+	if((void*)iph  + sizeof(struct iphdr) >= data_end)
+		return XDP_DROP;
+
+	int header_size = iph->ihl * 4;
+	if(header_size < sizeof(struct iphdr))
+		return XDP_DROP;
+	if((void*)iph + header_size > data_end)
+		return XDP_DROP;
+	int protocol = iph->protocol;
+	if(protocol != IPPROTO_UDP)
+		return XDP_PASS;
 	// bpf_trace_printk(fmt1, sizeof(fmt1));
 	int result =  bpf_redirect_map(&xsk_map, idx, XDP_PASS);
 	//bpf_trace_printk(fmt3, sizeof(fmt3), result);
