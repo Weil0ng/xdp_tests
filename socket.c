@@ -257,9 +257,9 @@ void exec_as_child(const char** args, int num_args)
 
 void load_xdp_program(const char* file, const char* section)
 {
-	const char *args1[] = {"ip", "link", "set", "dev", "eth0", "xdp", "none", NULL};
+	const char *args1[] = {"ip", "link", "set", "dev", "eth0", "xdpgeneric", "none", NULL};
 	exec_as_child(args1, sizeof(args1)/sizeof(args1[0]));
-	const char *args2[] = {"ip", "link", "set", "dev", "eth0", "xdp", "obj", file, "sec", section, NULL};
+	const char *args2[] = {"ip", "link", "set", "dev", "eth0", "xdpgeneric", "obj", file, "sec", section, NULL};
 	exec_as_child(args2, sizeof(args2)/sizeof(args2[0]));
 }
 
